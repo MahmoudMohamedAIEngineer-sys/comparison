@@ -26,7 +26,7 @@ CB = {
     "COUNTRY": "Country code",
     "TARGET": "Load_MW_hourly",
     "LOCAL_HOUR": "hour",
-    "PRED_DIR": "/kaggle/working/cb_predictions",
+    "PRED_DIR": "cb_predictions",
 }
 
 
@@ -110,7 +110,14 @@ def cb_apply_split(samples, table, origin_times=None):
 
     samples = samples.loc[keep].copy()
     samples["split"] = split[keep]
-    return samples.reset_index(drop=True)
+
+    per_country = samples.groupby(CB["COUNTRY"])["split"].agg(set)
+    complete = per_country[per_country.apply(lambda s: {"train", "validation", "test"} <= s)].index
+    dropped = sorted(set(per_country.index) - set(complete))
+    if dropped:
+        print("Countries without train, validation and CB-24 test origins:", dropped)
+
+    return samples[samples[CB["COUNTRY"]].isin(complete)].reset_index(drop=True)
 
 
 def cb_to_mw(scaled, countries, country_target_scalers):
@@ -316,6 +323,7 @@ def cb_common_set(honest, min_coverage=0.5):
     common_sizes = pairs[pairs["run"].isin(kept)].groupby(["country", "origin"]).size()
     common = common_sizes[common_sizes == len(kept)].reset_index()[["country", "origin"]]
     com = frame[frame["run"].isin(kept)].merge(common, on=["country", "origin"], how="inner")
+    assert len(com) == len(kept) * len(common) * CB["HORIZON"], "runs do not share the same test origins"
 
     return com, common, coverage
 
